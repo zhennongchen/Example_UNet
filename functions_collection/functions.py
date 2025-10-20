@@ -2,34 +2,8 @@ import numpy as np
 import glob 
 import os
 from PIL import Image
-import math
-import SimpleITK as sitk
-import cv2
 import random
-import lpips
-import torch
-import CTDenoising_Diffusion_N2N.Data_processing as dp
-from skimage.metrics import structural_similarity as compare_ssim
-
-
-def pick_random_from_segments(X):
-    # Generate the list from 0 to X
-    full_list = list(range(X + 1))
-    
-    # Determine the segment size
-    segment_size = len(full_list) // 4
-
-    # Initialize selected numbers
-    selected_numbers = []
-
-    # Loop through each segment and randomly pick one number
-    for i in range(4):
-        start = i * segment_size
-        end = (i + 1) * segment_size if i < 3 else len(full_list)  # Ensure last segment captures all remaining elements
-        segment = full_list[start:end]
-        selected_numbers.append(random.choice(segment))
-
-    return selected_numbers
+import Example_UNet.Data_processing as dp
 
 
 # function: set window level
@@ -121,71 +95,6 @@ def save_grayscale_image(a,save_path,normalize = True, WL = 50, WW = 100):
     
     Image.fromarray((I*255).astype('uint8')).save(save_path)
 
-
-# function: comparison error
-def compare(a, b,  cutoff_low = 0 ,cutoff_high = 1000000):
-    # compare a to b, b is ground truth
-    # if a pixel is lower than cutoff (meaning it's background), then it's out of comparison
-    c = np.copy(b)
-    diff = abs(a-b)
-   
-    a = a[(c>cutoff_low)& (c < cutoff_high) ].reshape(-1)
-    b = b[(c>cutoff_low)& (c < cutoff_high) ].reshape(-1)
-
-    diff = abs(a-b)
-
-    # mean absolute error
-    mae = np.mean(abs(a - b)) 
-
-    # mean squared error
-    mse = np.mean((a-b)**2) 
-
-    # root mean squared error
-    rmse = math.sqrt(mse)
-
-    # relative root mean squared error
-    dominator = math.sqrt(np.mean(b ** 2))
-    r_rmse = rmse / dominator * 100
-
-    # structural similarity index metric
-    cov = np.cov(a,b)[0,1]
-    ssim = (2 * np.mean(a) * np.mean(b)) * (2 * cov) / (np.mean(a) ** 2 + np.mean(b) ** 2) / (np.std(a) ** 2 + np.std(b) ** 2)
-    # ssim = compare_ssim(a,b)
-
-    # # normalized mean squared error
-    # nmse = np.mean((a-b)**2) / mean_square_value
-
-    # # normalized root mean squared error
-    # nrmse = rmse / mean_square_value
-
-    # peak signal-to-noise ratio
-    if cutoff_high < 1000:
-        max_value = cutoff_high
-    else:
-        max_value = np.max(b)
-    psnr = 10 * (math.log10((max_value**2) / mse ))
-
-    return mae, mse, rmse, r_rmse, ssim,psnr
-
-
-# function: hanning filter
-def hann_filter(x, projector):
-    x_prime = np.fft.fft(x)
-    x_prime = np.fft.fftshift(x_prime)
-    hanning_window = np.hanning(projector.nu)
-    x_prime_hann = x_prime * hanning_window
-    x_inverse_hann = np.fft.ifft(np.fft.ifftshift(x_prime_hann))
-    return x_inverse_hann
-
-def apply_hann(prjs, projector):
-    prjs_hann = np.zeros_like(prjs)
-    for ii in range(0,prjs_hann.shape[0]):
-        for jj in range(0, prjs_hann.shape[2]):
-            for kk in range(0, prjs_hann.shape[1]):
-                prjs_hann[ii,kk,jj,:] = hann_filter(prjs[ii,kk,jj,:], projector)
-    return prjs_hann
-
-
 # function: patch definition:
 def patch_definition(img_shape, patch_size, stride, count_for_overlap = False):
     # now assume patch_size is square in x and y, and same dimension as img in z 
@@ -220,53 +129,5 @@ def sample_patch_origins(patch_origins, N, include_original_list = None):
 
     return pixels
 
-# function: compute LPIPS for 3D data
-def compute_lpips_3d(prediction, ground_truth,mask = None, max_val = None, min_val = None, net_type='vgg'):
-    assert prediction.shape == ground_truth.shape, "Shape mismatch between prediction and ground truth!"
-    
-    # Convert to float32
-    prediction = prediction.astype(np.float32)
-    ground_truth = ground_truth.astype(np.float32)
-
-    if mask is not None:
-        prediction[mask==0] = np.min(prediction)
-        ground_truth[mask==0] = np.min(ground_truth)
-
-    # Normalize to [-1, 1] range as required by LPIPS
-    if max_val == None:
-        prediction = (prediction - prediction.min()) / (prediction.max() - prediction.min()) * 2 - 1 
-    else:
-        prediction = (prediction - min_val) / (max_val - min_val) * 2 - 1
-    if max_val == None:
-        ground_truth = (ground_truth - ground_truth.min()) / (ground_truth.max() - ground_truth.min()) * 2 - 1
-    else:
-        ground_truth = (ground_truth - min_val) / (max_val - min_val) * 2 - 1
-
-    # Initialize LPIPS loss model
-    loss_fn = lpips.LPIPS(net=net_type).to('cuda' if torch.cuda.is_available() else 'cpu')
-
-    lpips_scores = []
-    
-    # Loop through each slice along the z-axis
-    for i in range(prediction.shape[2]):
-        pred_slice = prediction[:, :, i]  # Get 2D slice
-        gt_slice = ground_truth[:, :, i]  # Get corresponding GT slice
-
-        # Convert numpy arrays to torch tensors
-        pred_tensor = torch.tensor(pred_slice).unsqueeze(0).unsqueeze(0)  # Shape: [1,1,H,W]
-        gt_tensor = torch.tensor(gt_slice).unsqueeze(0).unsqueeze(0)
-
-        # Move to GPU if available
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        pred_tensor = pred_tensor.to(device)
-        gt_tensor = gt_tensor.to(device)
-        loss_fn = loss_fn.to(device)
-
-        # Compute LPIPS score for this slice
-        lpips_score = loss_fn(pred_tensor, gt_tensor)
-        lpips_scores.append(lpips_score.item())
-
-    # Compute average LPIPS score across all slices
-    return np.mean(lpips_scores)
 
     

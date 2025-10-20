@@ -7,7 +7,7 @@ class Build():
     def __init__(self,file_list):
         self.a = 1
         self.file_list = file_list
-        self.data = pd.read_excel(file_list, dtype = {'Patient_ID': str, 'Patient_subID': str})
+        self.data = pd.read_excel(file_list, dtype = {'Patient_ID': str})
 
     def __build__(self,batch_list):
         for b in range(len(batch_list)):
@@ -19,9 +19,7 @@ class Build():
 
         batch_list = np.asarray(c['batch'])
         patient_id_list = np.asarray(c['Patient_ID'])
-        patient_subid_list = np.asarray(c['Patient_subID'])
-        random_num_list = np.asarray(c['random_num'])
-        noise_file_list = np.asarray(c['noise_file'])
-        ground_truth_file_list = np.asarray(c['ground_truth_file']) 
+        input_file_list = np.asarray(c['input_file'])
+        reference_file_list = np.asarray(c['reference_file']) 
         
-        return batch_list, patient_id_list, patient_subid_list, random_num_list, noise_file_list, ground_truth_file_list
+        return batch_list, patient_id_list,  input_file_list, reference_file_list
