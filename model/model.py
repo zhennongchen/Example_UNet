@@ -733,11 +733,7 @@ class Sampler(object):
 
         # dataset and dataloader
         self.generator = generator
-        dl = DataLoader(self.generator, batch_size = self.batch_size, shuffle = False, pin_memory = True, num_workers = 0)# cpu_count())
-        self.histogram_equalization = self.generator.histogram_equalization
-        print('histogram equalization: ', self.histogram_equalization)
-        self.bins = np.load('/mnt/camca_NAS/denoising/Data/histogram_equalization/bins.npy')
-        self.bins_mapped = np.load('/mnt/camca_NAS/denoising/Data/histogram_equalization/bins_mapped.npy')        
+        dl = DataLoader(self.generator, batch_size = self.batch_size, shuffle = False, pin_memory = True, num_workers = 0)# cpu_count())    
         self.background_cutoff = self.generator.background_cutoff
         self.maximum_cutoff = self.generator.maximum_cutoff
         self.normalize_factor = self.generator.normalize_factor
@@ -757,7 +753,7 @@ class Sampler(object):
         self.ema.load_state_dict(data["ema"])
 
     
-    def sample_2D(self, trained_model_filename, gt_img):
+    def sample_2D(self, trained_model_filename, reference_img):
         
         background_cutoff = self.background_cutoff; maximum_cutoff = self.maximum_cutoff; normalize_factor = self.normalize_factor
         self.load_model(trained_model_filename) 
@@ -772,8 +768,8 @@ class Sampler(object):
 
         # start to run
         with torch.inference_mode():
-            print('gt_img shape: ', gt_img.shape)
-            for z_slice in range(0,gt_img.shape[-1]):
+            print('gt_img shape: ', reference_img.shape)
+            for z_slice in range(0,reference_img.shape[-1]):
                 batch_input, batch_gt = next(self.cycle_dl)
                 data_input = batch_input.to(device)
                             
@@ -783,10 +779,8 @@ class Sampler(object):
                 pred_img[:,:,z_slice] = pred_img_slice
 
         
-        pred_img = Data_processing.crop_or_pad(pred_img, [gt_img.shape[0], gt_img.shape[1],gt_img.shape[-1]], value = np.min(gt_img))
+        pred_img = Data_processing.crop_or_pad(pred_img, [reference_img.shape[0], reference_img.shape[1],reference_img.shape[-1]], value = np.min(reference_img))
         pred_img = Data_processing.normalize_image(pred_img, normalize_factor = normalize_factor, image_max = maximum_cutoff, image_min = background_cutoff, invert = True)
-        if self.histogram_equalization:
-            pred_img = Data_processing.apply_transfer_to_img(pred_img, self.bins, self.bins_mapped,reverse = True)
         pred_img = Data_processing.correct_shift_caused_in_pad_crop_loop(pred_img)
       
         return pred_img
