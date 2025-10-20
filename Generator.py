@@ -174,7 +174,7 @@ class Dataset_2D(Dataset):
         if self.num_patches_per_slice != None:
             x_shape, y_shape = input_slice.shape[0], input_slice.shape[1]
             random_origin_x, random_origin_y = random.randint(0, x_shape - self.patch_size[0]), random.randint(0, y_shape - self.patch_size[1])
-            print('random origin x is: ', random_origin_x, ' and random origin y is: ', random_origin_y)
+            # print('random origin x is: ', random_origin_x, ' and random origin y is: ', random_origin_y)
             input_slice = input_slice[random_origin_x: random_origin_x + self.patch_size[0], random_origin_y: random_origin_y + self.patch_size[1]]
             reference_slice = reference_slice[random_origin_x: random_origin_x + self.patch_size[0], random_origin_y: random_origin_y + self.patch_size[1]]
 
@@ -185,7 +185,7 @@ class Dataset_2D(Dataset):
                 reference_slice, _ = random_rotate(reference_slice , z_rotate_degree = z_rotate_degree, order = 1)
                 input_slice, translate, y_translate = random_translate(input_slice)
                 reference_slice, _, _ = random_translate(reference_slice, x_translate = translate, y_translate = y_translate)
-                print('z rotate degree is: ', z_rotate_degree, ' translate is: ', translate)
+                # print('z rotate degree is: ', z_rotate_degree, ' translate is: ', translate)
 
         input_data = torch.from_numpy(input_slice).unsqueeze(0).float()
         output_data = torch.from_numpy(reference_slice).unsqueeze(0).float()

@@ -764,7 +764,7 @@ class Sampler(object):
         # check whether model is on GPU:
         print('model device: ', next(self.ema.ema_model.parameters()).device)
 
-        pred_img = np.zeros((self.image_size[0], self.image_size[1], gt_img.shape[-1]), dtype = np.float32)
+        pred_img = np.zeros((self.image_size[0], self.image_size[1], reference_img.shape[-1]), dtype = np.float32)
 
         # start to run
         with torch.inference_mode():
