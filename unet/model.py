@@ -31,9 +31,9 @@ from ema_pytorch import EMA
 
 from accelerate import Accelerator
 
-from Diffusion_denoising_thin_slice.noise2noise.attend import Attend
-import Diffusion_denoising_thin_slice.functions_collection as ff
-import Diffusion_denoising_thin_slice.Data_processing as Data_processing
+from Example_UNet.model.attend import Attend
+import Example_UNet.functions_collection as ff
+import Example_UNet.Data_processing as Data_processing
 
 
 # constants
@@ -529,15 +529,7 @@ class Trainer(object):
 
         # model
         self.model = model  
-        # self.specify_loss = specify_loss
-        # if self.specify_loss == 'mse':
-        #     self.loss_function = F.mse_loss
-        # elif self.specify_loss == 'mae':
-        #     self.loss_function = F.l1_loss
-        # elif self.specify_loss == 'both':
         self.loss_function1 = F.mse_loss; self.loss_function2 = F.l1_loss
-
-        self.channels = model.channels
 
         # sampling and training hyperparameters
         self.batch_size = train_batch_size
@@ -736,7 +728,6 @@ class Sampler(object):
         if device == 'cpu':
             self.device = torch.device("cpu")
 
-        self.channels = model.channels
         self.image_size = image_size
         self.batch_size = batch_size
 
@@ -797,6 +788,5 @@ class Sampler(object):
         if self.histogram_equalization:
             pred_img = Data_processing.apply_transfer_to_img(pred_img, self.bins, self.bins_mapped,reverse = True)
         pred_img = Data_processing.correct_shift_caused_in_pad_crop_loop(pred_img)
-        # print('final image shape: ', pred_img.shape)
       
         return pred_img

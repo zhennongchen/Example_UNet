@@ -9,8 +9,8 @@ from skimage.measure import block_reduce
 
 import torch
 from torch.utils.data import Dataset
-import CTDenoising_Diffusion_N2N.Data_processing as Data_processing
-import CTDenoising_Diffusion_N2N.functions_collection as ff
+import Example_UNet.Data_processing as Data_processing
+import Example_UNet.functions_collection as ff
 
 
 # random function
@@ -45,16 +45,15 @@ def random_translate(i, x_translate = None,  y_translate = None, translate_range
 class Dataset_2D(Dataset):
     def __init__(
         self,
-        img_list,
+        input_list,
+        reference_list,
+
         image_size,
 
         num_slices_per_image,
         random_pick_slice,
         slice_range, # None or [a,b]
 
-        bins,
-        bins_mapped,
-        histogram_equalization,
         background_cutoff, 
         maximum_cutoff,
         normalize_factor,
@@ -67,28 +66,30 @@ class Dataset_2D(Dataset):
         augment_frequency = 0,
     ):
         super().__init__()
-        self.img_list = img_list
+        self.input_list = input_list
+        self.reference_list = reference_list
         self.image_size = image_size
+
         self.num_slices_per_image = num_slices_per_image
         self.random_pick_slice = random_pick_slice
         self.slice_range = slice_range
         self.num_patches_per_slice = num_patches_per_slice
         self.patch_size = patch_size
 
-        self.bins = bins
-        self.bins_mapped = bins_mapped
-        self.histogram_equalization = histogram_equalization
         self.background_cutoff = background_cutoff
         self.maximum_cutoff = maximum_cutoff
         self.normalize_factor = normalize_factor
+
         self.shuffle = shuffle
         self.augment = augment
         self.augment_frequency = augment_frequency
-        self.num_files = len(img_list)
+        self.num_files = len(input_list)
 
         self.index_array = self.generate_index_array()
-        self.current_img_file = None
-        self.current_img_data = None
+        self.current_input_file = None
+        self.current_input_data = None
+        self.current_reference_file = None
+        self.current_reference_data = None
 
     def generate_index_array(self):
         np.random.seed()
@@ -121,10 +122,7 @@ class Dataset_2D(Dataset):
 
     def load_file(self, filename):
         ii = nb.load(filename).get_fdata()
-    
-        # do histogram equalization first
-        if self.histogram_equalization == True: 
-            ii = Data_processing.apply_transfer_to_img(ii, self.bins, self.bins_mapped)
+
         # cutoff and normalization
         ii = Data_processing.cutoff_intensity(ii,cutoff_low = self.background_cutoff, cutoff_high = self.maximum_cutoff)
         ii = Data_processing.normalize_image(ii, normalize_factor = self.normalize_factor, image_max = self.maximum_cutoff, image_min = self.background_cutoff ,invert = False)
@@ -133,24 +131,31 @@ class Dataset_2D(Dataset):
         return ii
         
     def __getitem__(self, index):
-        # print('in this geiitem, self.index_array is: ', self.index_array)
         if self.num_patches_per_slice != None:
             f,s,p = self.index_array[index]
         else:
             f,s = self.index_array[index]
         # print('index is: ', index, ' now we pick file ', f)
-        img_filename = self.img_list[f]
-        # print('img filename is: ', img_filename, ' while current img file is: ', self.current_img_file)
+        input_filename = self.input_list[f]
+        reference_filename = self.reference_list[f]
+        print('input filename is: ', input_filename, ' and reference filename is: ', reference_filename)
 
-        if img_filename != self.current_img_file:
-            img = self.load_file(img_filename)
-            print('load image file: ', img_filename)
-            self.current_img_file = img_filename
-            self.current_img_data = np.copy(img)
+        if input_filename != self.current_input_file:
+            # load input
+            img = self.load_file(input_filename)
+            print('load image file: ', input_filename, ' with shape: ', img.shape)
+            self.current_input_file = input_filename
+            self.current_input_data = np.copy(img)
+
+            # load reference
+            ref = self.load_file(reference_filename)
+            print('load reference file: ', reference_filename, ' with shape: ', ref.shape)
+            self.current_reference_file = reference_filename
+            self.current_reference_data = np.copy(ref)
 
             # define a list of random slice numbers
             if self.slice_range == None:
-                total_slice_range =  [0 + 1,self.current_img_data.shape[2]-1]
+                total_slice_range =  [0 + 1,self.current_input_data.shape[2]-1]
             else:
                 total_slice_range = self.slice_range
             # print('in this condition case, total slice range is: ', total_slice_range)
@@ -164,26 +169,25 @@ class Dataset_2D(Dataset):
         # pick the slice
         # print('pick the slice: ', self.slice_index_list[s])
         s = self.slice_index_list[s]
-        img_stack = np.copy(self.current_img_data)[:,:,s-1:s+2]
+        input_slice = self.current_input_data[:,:,s]
+        reference_slice = self.current_reference_data[:,:,s]
         if self.num_patches_per_slice != None:
-            x_shape, y_shape = img_stack.shape[0], img_stack.shape[1]
+            x_shape, y_shape = input_slice.shape[0], input_slice.shape[1]
             random_origin_x, random_origin_y = random.randint(0, x_shape - self.patch_size[0]), random.randint(0, y_shape - self.patch_size[1])
-            # print('x range is: ', random_origin_x, random_origin_x + self.patch_size[0], ' and y range is: ', random_origin_y, random_origin_y + self.patch_size[1])
-            img_stack = img_stack[random_origin_x:random_origin_x + self.patch_size[0], random_origin_y:random_origin_y + self.patch_size[1],:]
+            print('x range is: ', random_origin_x, random_origin_x + self.patch_size[0], ' and y range is: ', random_origin_y, random_origin_y + self.patch_size[1])
+            input_slice = input_slice[random_origin_x: random_origin_x + self.patch_size[0], random_origin_y: random_origin_y + self.patch_size[1]]
+            reference_slice = reference_slice[random_origin_x: random_origin_x + self.patch_size[0], random_origin_y: random_origin_y + self.patch_size[1]]
 
         # augmentation
         if self.augment == True:
             if random.uniform(0,1) < self.augment_frequency:
-                img_stack, z_rotate_degree = random_rotate(img_stack , order = 1)
-                img_stack, x_translate, y_translate = random_translate(img_stack)
+                input_slice, z_rotate_degree = random_rotate(input_slice , order = 1)
+                reference_slice, _ = random_rotate(reference_slice , z_rotate_degree = z_rotate_degree, order = 1)
+                input_slice, translate, y_translate = random_translate(input_slice)
+                reference_slice, _, _ = random_translate(reference_slice, x_translate = translate, y_translate = y_translate)
 
-        # select input and output reference
-        input = np.stack([img_stack[:,:,0], img_stack[:,:,2]], axis = -1)
-        output = np.copy(img_stack[:,:,1])
-
-        input_data = np.transpose(input, (2,0,1))
-        input_data = torch.from_numpy(input_data).float()
-        output_data = torch.from_numpy(output).unsqueeze(0).float()
+        input_data = torch.from_numpy(input_slice).unsqueeze(0).float()
+        output_data = torch.from_numpy(reference_slice).unsqueeze(0).float()
         # print('input data shape is: ', input_data.shape, ' and output data shape is: ', output_data.shape)
         return input_data, output_data
         

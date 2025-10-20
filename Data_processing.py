@@ -4,7 +4,7 @@ import os
 from skimage.measure import block_reduce
 from scipy import ndimage
 from dipy.align.reslice import reslice
-import CTDenoising_Diffusion_N2N.functions_collection as ff
+import Example_UNet.functions_collection as ff
 
 # function: histogram equalization
 def equalize_histogram(bins, hist, weight):
